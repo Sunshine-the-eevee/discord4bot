@@ -1,5 +1,5 @@
-const Discord = require('discord.js');
-const client = new Discord.Client();
+const Eris = require('eris');
+const client = new Eris(process.env.DISCORD_BOT_TOKEN); // Replace with your bot token (bro really thought i was gonna put a token here lmao thats crazy ngl)
 
 const Store = require('electron-store');
 const store = new Store();
@@ -32,8 +32,8 @@ var availableRegions = ["us-west",
                     ];
 
 client.on('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-    console.log(`With ${client.users.size} users, in ${client.channels.size} channels of ${client.guilds.size} guilds.`);
+    console.log(`Logged in as ${client.user.username}#${client.user.discriminator}!`);
+    console.log(`With ${Object.keys(client.users).length} users, in ${Object.keys(client.channels).length} channels of ${Object.keys(client.guilds).length} guilds.`);
 
     setInterval(() => {
         if(ping != client.ping){
@@ -42,7 +42,7 @@ client.on('ready', () => {
         }
     }, 5000);
 
-    client.fetchVoiceRegions()
+    client.getVoiceRegions()
         .then(regions => {
             console.log(regions, regions.map(region => region.id));
             availableRegions = regions.map(region => region.id)
@@ -53,11 +53,11 @@ client.on('ready', () => {
 
     delGuilds();
 
-    client.guilds.tap(guild => {
+    for (const guildId in client.guilds) {
+        const guild = client.guilds[guildId];
         addGuild(guild);
-        // console.log(guild.name);
         document.getElementById('gd/' + guild.id).addEventListener('click', selectGuild);
-    });
+    }
 
     try {
         if(store.has('lastGuild'))
@@ -65,69 +65,63 @@ client.on('ready', () => {
     } catch (error) {
         // console.log(error);
         if(document.getElementsByClassName('listItem')[2]) document.getElementsByClassName('listItem')[2].click();
-    }  
+    }
 
-    try {      
+    try {
         if(store.has('lastChannel'))
             document.getElementById(store.get('lastChannel')).click();
     } catch (error) {
         // console.log(error);
         if(document.getElementsByClassName('sidebarChannelContainer')[0]) document.getElementsByClassName('sidebarChannelContainer')[0].click();
     }
-    
+
     goToApp();
 });
 
-client.on('message', msg => {
+client.on('messageCreate', msg => {
     // if (msg.content === 'ping') {
-    //     msg.reply('pong');
+    //     msg.channel.createMessage('pong');
     // }
     // console.log(msg);
 
     let channelId = msg.channel.id,
         channel = document.getElementById(`chc/${channelId}`);
 
-    if(store.get('lastGuild') !== `gd/${msg.guild.id}`) document.getElementById(`gd/${msg.guild.id}`).classList.add('newMessage');
+    if(store.get('lastGuild') !== `gd/${msg.guildID}`) document.getElementById(`gd/${msg.guildID}`).classList.add('newMessage');
 
     if(channel && store.get('lastChannel') === `chc/${channelId}`){
-        updateChat([{date: timestampToObject(msg.createdTimestamp), message: msg}], {getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: msg.channel});
-        
+        updateChat([{date: timestampToObject(msg.timestamp), message: msg}], {getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: msg.channel});
+
         let imgsForResolving = document.getElementsByClassName('needEmojiResolving');
         for(emoji of imgsForResolving){
             emoji.classList.remove('needEmojiResolving');
-            if(client.emojis.get(emoji.getAttribute('data-id'))){
-                emoji.src = client.emojis.get(emoji.getAttribute('data-id')).url;
+            if(client.emojis[emoji.getAttribute('data-id')]){
+                emoji.src = client.emojis[emoji.getAttribute('data-id')].url;
             }
             else{
                 emoji.src = `https://cdn.discordapp.com/emoji/${emoji.getAttribute('data-id')}.png`;
             }
         }
-    } 
+    }
 
 });
 
-client.on('messageUpdate', (old, msg) => {
+client.on('messageUpdate', (msg, oldMsg) => {
     // console.log(msg);
 
     let channelId = msg.channel.id,
         channel = document.getElementById(`chc/${channelId}`);
 
-    if(channel && store.get('lastChannel') === `chc/${channelId}`) updateChat([{date: timestampToObject(msg.createdTimestamp), message: msg}], {edited: true, getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: msg.channel});
+    if(channel && store.get('lastChannel') === `chc/${channelId}`) updateChat([{date: timestampToObject(msg.timestamp), message: msg}], {edited: true, getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: msg.channel});
 });
 
-client.on('messageDelete', (msg) => {
+client.on('messageDelete', msg => {
     // console.log(msg);
 
     let message = document.getElementById(`msg/${msg.id}`),
         deleteSeparator = false;
 
     if(message){
-
-        // if(message.previousSibling)
-        //     if(message.previousSibling.classList.contains('messageSeparator'))
-        //         if(message.nextSibling)
-        //             if(!message.nextSibling.classList.contains('messageWrapper'))
-        //                 message.previousSibling.remove();
 
         if(message.nextSibling){
             if(!message.nextSibling.classList.contains('messageWrapper')){
@@ -143,52 +137,61 @@ client.on('messageDelete', (msg) => {
             }
         }
 
-            
+
         if(deleteSeparator)
             message.previousSibling.remove();
         message.remove();
-    } 
-});
-
-client.on("error", (e) => {
-    console.error(e);
-});
-
-client.on('presenceUpdate', (oldM, newM) => {
-    // console.log(newM);
-    if( newM.guild.id === store.get('lastGuild').substring(3) ){ // newM.presence.status != oldM.presence.status &&
-        // console.log(oldM.displayName, oldM.presence.status, '=>', newM.presence.status)
-        loadMembers(newM.guild, newM.guild.channels.get( store.get('lastChannel').split('/')[1]) );
     }
 });
 
-client.on('messageReactionAdd', (reaction, user) => {
-    // console.log(reaction, user);
+client.on("error", (err) => {
+    console.error(err);
+});
+
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+    // console.log(newPresence);
+    const guildId = store.get('lastGuild')?.substring(3);
+    if (guildId && newPresence.guild_id === guildId) { // newPresence.status !== oldPresence.status &&
+        const guild = client.guilds[newPresence.guild_id];
+        const channelId = store.get('lastChannel')?.split('/')[1];
+        if (guild && channelId) {
+            const channel = guild.channels[channelId];
+            if (channel) {
+                const member = guild.members[newPresence.user.id];
+                if (member) {
+                    loadMembers(guild, channel);
+                }
+            }
+        }
+    }
+});
+
+client.on('messageReactionAdd', async (msg, emoji, userId) => {
+    // console.log(msg, emoji, userId);
     // console.log(`reaction added`);
 
-    let channelId = reaction.message.channel.id,
+    let channelId = msg.channel.id,
         channel = document.getElementById(`chc/${channelId}`);
 
     if(channel && store.get('lastChannel') === `chc/${channelId}`){
-        updateChat([{date: timestampToObject(reaction.message.createdTimestamp), message: reaction.message}], {edited: true, getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: reaction.message.channel});
+        const fullMessage = await client.getMessage(msg.channel.id, msg.id);
+        updateChat([{date: timestampToObject(fullMessage.timestamp), message: fullMessage}], {edited: true, getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: fullMessage.channel});
     }
-    
+
 });
 
-client.on('messageReactionRemove', (reaction, user) => { // messageReactionRemove
-    // console.log(reaction, user);
+client.on('messageReactionRemove', async (msg, emoji, userId) => { // messageReactionRemove
+    // console.log(msg, emoji, userId);
     // console.log(`reaction removed`);
 
-    let channelId = reaction.message.channel.id,
-        channel = document.getElementById(`chc/${channelId}`),
-        msg = reaction.message;
+    let channelId = msg.channel.id,
+        channel = document.getElementById(`chc/${channelId}`);
 
-    if(channel && store.get('lastChannel') === `chc/${channelId}`){ //get message from disxord but its still incorrect
-        // reaction.message.channel.fetchMessage(reaction.message.id).then(msg => {
-            updateChat([{date: timestampToObject(msg.createdTimestamp), message: msg}], {edited: true, getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: msg.channel});
-        // })
+    if(channel && store.get('lastChannel') === `chc/${channelId}`){
+        const fullMessage = await client.getMessage(msg.channel.id, msg.id);
+        updateChat([{date: timestampToObject(fullMessage.timestamp), message: fullMessage}], {edited: true, getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: fullMessage.channel});
     }
-    
+
 });
 
 function reactMessage(e){
@@ -209,43 +212,54 @@ function reactMessage(e){
     channelId = target.getAttribute('channel');
     messageId = target.getAttribute('message');
     emojiName = target.getAttribute('name');
+    const emojiId = target.getAttribute('emojiid');
 
-    // console.log(guildId, channelId, messageId, emojiName);
+    // console.log(guildId, channelId, messageId, emojiName, emojiId);
+
+    const guild = client.guilds[guildId];
+    if (!guild) return;
+    const channel = guild.channels[channelId];
+    if (!channel || channel.type !== 0) return;
 
     if(me){
-        client.guilds.get(guildId).channels.get(channelId).fetchMessage(messageId).then(msg => {
-            let reaction = msg.reactions.get(emojiName);
-            reaction.remove(client.user).catch(console.error);
+        channel.getMessage(messageId).then(msg => {
+            const reaction = msg.reactions[emojiName || emojiId];
+            if (reaction) {
+                client.removeMessageReaction(channelId, messageId, emojiName || emojiId, client.user.id).catch(console.error);
+            }
         }).catch(console.error);
-        
+
     }else{
-        client.guilds.get(guildId).channels.get(channelId).fetchMessage(messageId).then(msg => msg.react(emojiName).catch(console.error)).catch(console.error);
+        client.addMessageReaction(channelId, messageId, emojiName || emojiId).catch(console.error);
     }
 }
 
 function selectGuild(e){
-    let guildId = e.target;
-    if(guildId.classList.contains('guildAcronym'))
-        guildId = guildId.parentNode;
-    if(guildId.classList.contains('guildImage'))
-        guildId = guildId.parentNode;
-    if(guildId.classList.contains('wrapper'))
-        guildId = guildId.parentNode;
-    if(guildId.classList.contains('listItem'))
-        guildId = guildId.id;
+    let guildIdElement = e.target;
+    if(guildIdElement.classList.contains('guildAcronym'))
+        guildIdElement = guildIdElement.parentNode;
+    if(guildIdElement.classList.contains('guildImage'))
+        guildIdElement = guildIdElement.parentNode;
+    if(guildIdElement.classList.contains('wrapper'))
+        guildIdElement = guildIdElement.parentNode;
+    if(guildIdElement.classList.contains('listItem'))
+        guildIdElement = guildIdElement.id;
 
-    let guild = client.guilds.get(guildId.substring(3)),
-        firstTextChannel;
+    const guildId = guildIdElement.substring(3);
+    const guild = client.guilds[guildId];
+    if (!guild) return;
 
-    document.getElementById(guildId).classList.remove('newMessage');
+    let firstTextChannel;
 
-    if(document.getElementById(guildId).classList.contains('guildSelected'))
+    document.getElementById(guildIdElement).classList.remove('newMessage');
+
+    if(document.getElementById(guildIdElement).classList.contains('guildSelected'))
         return;
 
     for( el of document.getElementsByClassName('listItem') ){
         el.classList.remove('guildSelected');
     }
-    
+
     delChannels();
     document.getElementsByClassName('sidebarGuildName')[0].innerText = guild.name;
     document.getElementsByClassName('sidebarGuildName')[0].id = `gdo/${guild.id}`;
@@ -253,53 +267,51 @@ function selectGuild(e){
     document.getElementsByClassName('sidebarContainer1')[0].addEventListener('click', getGuildOptions);
 
 
-    // https://stackoverflow.com/questions/57023811/how-to-map-by-sorting-by-a-certain-property
-
     const descPos = (a, b) => {
         if (a.type !== b.type) {
-            if (a.type === 'voice') return 1;
+            if (a.type === 2) return 1; // Voice channel type is 2 in Eris
             else return -1;
         } else return a.position - b.position;
     };
 
-    const channels = new Discord.Collection();
+    const channels = new Map();
 
-    channels.set('__none', guild.channels.filter(channel => !channel.parent && channel.type !== 'category').sort(descPos));
+    channels.set('__none', Object.values(guild.channels).filter(channel => !channel.parentID && channel.type !== 4).sort(descPos)); // Category type is 4 in Eris
 
-    const categories = guild.channels.filter(channel => channel.type === 'category').sort(descPos);
-    categories.forEach(category => channels.set(category.id, category.children.sort(descPos)));
+    const categories = Object.values(guild.channels).filter(channel => channel.type === 4).sort(descPos);
+    categories.forEach(category => {
+        const children = Object.values(guild.channels).filter(c => c.parentID === category.id).sort(descPos);
+        channels.set(category.id, children);
+    });
 
     for (let [categoryID, children] of channels) {
-        const category = guild.channels.get(categoryID);
+        const category = guild.channels[categoryID];
         if (category) addChannel(category);
-        for (let [, child] of children){
-            if(!firstTextChannel && child.type === 'text') firstTextChannel = child.id;
+        for (let child of children){
+            if(!firstTextChannel && child.type === 0) firstTextChannel = child.id; // Text channel type is 0 in Eris
             addChannel(child, selectChannel, selectChannelForChat, voiceUserDrop);
-            if(child.type == 'voice' && child.members.size > 0){
-                for(let [, member] of child.members){
-                    // console.log(member)
-                    addVoiceUser(child, member);
-                    if(member.selfMute || member.serverMute)
-                        setMute(member, true);
-                    if(guild.afkChannelID === member.voiceChannelID)
-                        setMute(member, true);
-                    if(member.selfDeaf || member.serverDeaf)
-                        setDeaf(member, true);
-                    if(member.selfStream)
-                        setGoLive(member, true);
-                    // setMute(member, member.mute);
-                    // setDeaf(member, member.deaf);
+            if(child.type == 2 && Object.keys(child.voiceMembers).length > 0){ // Voice channel type is 2 in Eris
+                for(const memberId in child.voiceMembers){
+                    const member = child.voiceMembers[memberId];
+                    addVoiceUser(child, member.member);
+                    if(member.mute || member.self_mute)
+                        setMute(member.member, true);
+                    if(guild.afk_channel_id === member.channel_id)
+                        setMute(member.member, true);
+                    if(member.deaf || member.self_deaf)
+                        setDeaf(member.member, true);
+                    if(member.self_stream)
+                        setGoLive(member.member, true);
                 }
             }
         }
     }
 
-    // console.log(list.join('\n'));
-
-    guild.channels.tap(channel =>{ 
-        if(channel.type === 'category')
+    for (const channelId in guild.channels) {
+        const channel = guild.channels[channelId];
+        if(channel.type === 4) // Category type is 4 in Eris
             document.getElementById('ch/' + channel.id).addEventListener('click', selectChannel);
-    })
+    }
 
     loadMembers(guild);
 
@@ -307,25 +319,15 @@ function selectGuild(e){
         document.getElementById(`chc/${firstTextChannel}`).click();
     }
 
-    document.getElementById(guildId).classList.add('guildSelected');
-    store.set('lastGuild', guildId);
-
-    // guild.fetchAuditLogs()
-    //     .then(audit => console.log(audit))
-    //     .catch(console.error);
-    //414537106145280002 molj inbvite
-    //316907844236476416 anton 
-
-    // guild.members.get('281478128629579776').removeRole('414537106145280002');
-    // guild.members.get('281478128629579776').removeRole('316907844236476416');
+    document.getElementById(guildIdElement).classList.add('guildSelected');
+    store.set('lastGuild', guildIdElement);
 }
 
 function voiceUserDrop(el){
     el.preventDefault();
     let userId = el.dataTransfer.getData("text");
-    // console.log(data)
 
-    let target = el.target, 
+    let target = el.target,
         channelId = '';
     while(!target.classList.contains('sidebarChannelContainer')){
         target = target.parentNode;
@@ -333,14 +335,13 @@ function voiceUserDrop(el){
     target.classList.remove('sidebarChannelContainerOnDrag');
     channelId = target.id;
 
-    // console.log(`transfering ${userId.substr(4)} user to ${channelId.substr(3)} channel`);
-
-    client.channels.get(channelId.substr(3)).guild.members.get(userId.substr(4)).setVoiceChannel(channelId.substr(3));
-
-    // ev.target.appendChild(document.getElementById(data));
+    const guild = client.guilds[channelId.substring(3)];
+    if (guild) {
+        guild.moveMember(userId.substr(4), channelId.substr(3)).catch(console.error);
+    }
 }
 
-function getGuildOptions(e){
+async function getGuildOptions(e){
     let target = e.target;
     while(!target.classList.contains('sidebarGuildName')){
         target = target.children[0];
@@ -348,93 +349,87 @@ function getGuildOptions(e){
 
 
     let gdId = target.getAttribute('guild'),
-        guild = client.guilds.get(gdId);
-    // console.log(guild);
+        guild = client.guilds[gdId];
+    if (!guild) return;
 
     let types = [   'string',
                     'number',
                     'boolean',
-                    'bigint',
+                    // 'bigint', // bigint is not directly comparable with typeof in this context
                     // 'undefined',
                     'object',
     ];
-    let whitelist = [   
-                        {name : 'name', method : "setName"},
+    let whitelist = [
+                        {name : 'name', method : "edit", inputOptions : { name: true }},
                         {name : 'id', method : ""},
-                        {name : 'afkChannelID', method : ""},
-                        {name : 'memberCount', method : ""},
+                        {name : 'afk_channel_id', method : ""},
+                        {name : 'member_count', method : ""},
                         {name : 'createdAt', method : ""},
                         {name : 'joinedAt', method : ""},
-                        {name : 'region', method : "setRegion", inputOptions : availableRegions},
+                        {name : 'region', method : "edit", inputOptions : { region: true }, options: availableRegions},
     ];
 
     whitelist.has = function(string){
-        // for(data of this){
         for(var i = 0 ; i < this.length; i++){
-            // console.log(data);
             if(this[i].name === string){
-                // console.log(data.name, '=', string);
                 return true;
-            } 
+            }
         }
         return false;
     };
 
-    function saveOption(e){
-        if(e.target.innerText === 'Copy')
+    async function saveOption(e){
+        if(e.target.innerText !== 'Save')
             return;
         let target = e.target,
             parent = target.parentNode,
             gdId = parent.getAttribute('channel'),
             method = parent.getAttribute('method'),
+            optionName = parent.getAttribute('optionName'),
             value =parent.children[1].value,
             originalValue = parent.getAttribute('originalValue');
-            
+
         parent.children[1].classList.remove('error');
         clearTaskBar();
 
-        // console.log(target, /*opBtn,*/ parent, gdId, /*mbId,*/ method, value, originalValue);
-            
         if(value == originalValue)
             return;
 
-        client.guilds.get(gdId)[method](value).catch(function(e){
+        const guildToEdit = client.guilds[gdId];
+        if (!guildToEdit || !guildToEdit[method]) return;
+
+        const payload = {};
+        payload[optionName] = value;
+
+        guildToEdit[method](payload).catch(function(err){
             parent.children[1].classList.add('error');
-            error(e.message.replace(/\n/g, ", "));
-            console.error(e.message);
+            error(err.message.replace(/\n/g, ", "));
+            console.error(err);
         }).then(function(e){
             log(`Set ${parent.children[0].innerText} of ${gdId} from ${originalValue} to ${value}`);
             document.getElementById(`gd/${gdId}`).click();
             document.getElementById(`gdo/${gdId}`).click();
-            // setTimeout(()=>{
-            //     document.getElementById(`gd/${gdId}`).click();
-            //     document.getElementById(`mb/${mbId}`).click();
-            // }, 100);
         });
     }
 
     clearChat();
     document.getElementsByClassName('chatTitleName')[0].innerText = guild.name;
-    let options = [];
+    let options =;
 
-    for(data of whitelist){
-        // console.log(data);
+    for(let data of whitelist){
         if(typeof(guild[data.name]) == 'undefined')
             continue;
-            let opt = { type: 'input', channel: guild, data: data.name, method: data.method, inputOptions: data.inputOptions };
+            let opt = { type: 'input', channel: guild, data: data.name, method: data.method, inputOptions: data.inputOptions, options: data.options };
             if(data.method !== '') opt.callback = saveOption;
             options.push(opt);
-            // addChatOpDeprecated(channel, data.name, data.method);
     }
 
     options.push({type: 'separator'});
-    // addChatOpDeprecated({'__SEPARATOR': '__SEPARATOR'}, '__SEPARATOR');
 
-    for(data in guild){
+    for(let data in guild){
         if( types.includes( typeof(guild[data]) ) ){
             if(!whitelist.has(data))
                 options.push({ type: 'input', channel: guild, data: data, method: '' });
-            // addChatOpDeprecated(channel, data);
         }
     }
 
@@ -443,17 +438,10 @@ function getGuildOptions(e){
 }
 
 function loadMembers(guild, channel){
-    
-    // const roleFilter = (a, b) =>{
-    //     return b.highestRole.position - a.highestRole.position;
 
-    //     // if(a.hoistRole === null || b.hoistRole === null)
-    //     //     return b.highestRole.position - a.highestRole.position;
-    //     // return b.hoistRole.position - a.hoistRole.position;
-    // };
     function nameSorter(a, b){
-        let aName = a.nickname != null ? a.nickname : a.user.username,
-            bName = b.nickname != null ? b.nickname : b.user.username;
+        let aName = a.nick != null ? a.nick : a.user.username,
+            bName = b.nick != null ? b.nick : b.user.username;
         if(aName < bName) return -1;
         if(aName > bName) return 1
         return 0;
@@ -461,65 +449,55 @@ function loadMembers(guild, channel){
 
     function hasPermissions(member){
         if(channel){
-            if(!member.permissionsIn(channel).has('VIEW_CHANNEL'))
+            if(!channel.permissionsOf(member.id).has('viewChannel'))
                 return false;
         }
         return true;
     }
 
     delMembers();
-    // guild.members.sort(roleFilter).tap(member =>{
-    //     addMemeber(member);
-    //     document.getElementById(`mb/${member.id}`).addEventListener('click', selectMember);
-    // })
 
-    guild.roles.sort((a, b) => b.calculatedPosition - a.calculatedPosition).tap(role =>{
+    const roles = Object.values(guild.roles).sort((a, b) => b.position - a.position);
+    for (const role of roles) {
         if(role.hoist || role.name == '@everyone'){
-            // console.log(role.name, role.position, role.calculatedPosition, role.members.size);
-            role.members.sort(nameSorter).filter(hasPermissions).filter(member => member.presence.status !== 'offline').tap(member =>{
-                // console.log(member.displayName);
+            const members = Object.values(guild.members).filter(member => member.roles.includes(role.id)).sort(nameSorter).filter(hasPermissions).filter(member => member.status !== 'offline');
+            for (const member of members) {
                 if(!document.getElementById(`mb/${member.id}`)){
                     addMemeber(member, channel);
                     document.getElementById(`mb/${member.id}`).addEventListener('click', selectMember);
                 }
-            })
-        } 
-    })
+            }
+        }
+    }
 
-    guild.members.sort(nameSorter).filter(hasPermissions).filter(member => member.presence.status === 'offline').tap(member =>{
+    const offlineMembers = Object.values(guild.members).sort(nameSorter).filter(hasPermissions).filter(member => member.status === 'offline');
+    for (const member of offlineMembers) {
         addMemeber(member, channel);
         document.getElementById(`mb/${member.id}`).addEventListener('click', selectMember);
-    })
-    
-    // guild.members.filter(member => member.hoistRole == null).sort(roleFilter).tap(member =>{
-    //     addMemeber(member);
-    //     document.getElementById(`mb/${member.id}`).addEventListener('click', selectMember);
-    // })
+    }
 }
 
-function selectChannelForChat(e){
-    let channelId = e.target;
+async function selectChannelForChat(e){
+    let channelIdElement = e.target;
 
-    if(!channelId.classList.contains('sidebarChannelNameOption'))
-        while(channelId.parentNode){
-            if( channelId.classList.contains('sidebarChannelContainer') )
+    if(!channelIdElement.classList.contains('sidebarChannelNameOption'))
+        while(channelIdElement.parentNode){
+            if( channelIdElement.classList.contains('sidebarChannelContainer') )
                 break;
-            channelId = channelId.parentNode;
+            channelIdElement = channelIdElement.parentNode;
         }
 
-    channelId = channelId.id
-
-    // console.log(channelId);
+    const channelId = channelIdElement.id;
 
     if(channelId[2] === 'c'){
 
-        let channel = client.channels.get(channelId.substring(4));
+        const channel = client.getChannel(channelId.substring(4));
+        if (!channel || channel.type !== 0) return;
 
         clearChat();
         document.getElementsByClassName('chatTitleName')[0].innerText = channel.name;
         createChat(sendMessage, channel);
-        // console.log(`open chat ${channel.guild.name} ${channel.name}/${channel.id}`);
-        channel.fetchMessages()//{ limit: 50 }
+        channel.getMessages({ limit: 50 })
             .then(messages => {
                 clearChat();
 
@@ -527,27 +505,21 @@ function selectChannelForChat(e){
                     return a.id - b.id;
                 }
 
-                // console.log(`Received ${messages.size} messages`)
-                // console.log(messages.sort(sorting));
+                const sortedMessages = Object.values(messages).sort(sorting);
+                let obj =;
 
-                // let messagesText = "";
-                let obj = [];
-
-                messages.sort(sorting).tap(message =>{
-                    var time = timestampToObject(message.createdTimestamp);
+                for (const message of sortedMessages) {
+                    var time = timestampToObject(message.timestamp);
                     obj.push({date: time, message: message});
-                    // messagesText += `${time.hour}:${time.minute} ${message.member.nickname !== null ? message.member.nickname : message.author.username} ${message.content}\n`;
-                });
+                }
 
-                // console.log(messagesText);
-                // document.getElementById('chatContent').innerText = messagesText;
                 updateChat(obj, {getMimeType: getMimeType, send:sendMessage, deleteMessage: deleteMessage, react: reactMessage, channel: channel});
-                
+
                 let imgsForResolving = document.getElementsByClassName('needEmojiResolving');
                 for(emoji of imgsForResolving){
                     emoji.classList.remove('needEmojiResolving');
-                    if(client.emojis.get(emoji.getAttribute('data-id'))){
-                        emoji.src = client.emojis.get(emoji.getAttribute('data-id')).url;
+                    if(client.emojis[emoji.getAttribute('data-id')]){
+                        emoji.src = client.emojis[emoji.getAttribute('data-id')].url;
                     }
                     else{
                         emoji.src = `https://cdn.discordapp.com/emoji/${emoji.getAttribute('data-id')}.png`;
@@ -559,49 +531,51 @@ function selectChannelForChat(e){
         loadMembers(channel.guild, channel);
 
 
-        store.set('lastChannel', channelId); //word-break: break-all;
+        store.set('lastChannel', channelId);
     }
 }
 
 function sendMessage(channelId, content){
-    // console.log(channelId, content);
-    return client.channels.get(channelId).send(content);
+    return client.createMessage(channelId, content);
 }
 
-function deleteMessage(e){ 
+function deleteMessage(e){
     let target = e.target;
-
-    client.guilds.get(target.getAttribute('guildId')).channels.get(target.getAttribute('channelId')).messages.get(target.getAttribute('messageId')).delete();
-    // console.log(target);
+    client.deleteMessage(target.getAttribute('guildId'), target.getAttribute('channelId'), target.getAttribute('messageId')).catch(console.error);
 }
 
-function getMimeType(url){
-    return fetch(url);
+async function getMimeType(url){
+    try {
+        const response = await fetch(url);
+        return response;
+    } catch (error) {
+        console.error("Error fetching:", error);
+        throw error;
+    }
 }
 
 
-function selectChannel(e){
-    // console.log(e.target);
-    let channelId = e.target;
+async function selectChannel(e){
+    let channelIdElement = e.target;
     let types = [   'string',
                     'number',
                     'boolean',
-                    'bigint',
+                    // 'bigint',
                     // 'undefined',
                     'object',
     ];
     let whitelist = [   {name : 'guild', method : ""},
-                        {name : 'name', method : "setName"},
+                        {name : 'name', method : "edit", inputOptions: { name: true } },
                         {name : 'id', method : ""},
                         {name : 'type', method : ""},
-                        {name : 'topic', method : "setTopic"},
-                        {name : 'bitrate', method : "setBitrate"},
+                        {name : 'topic', method : "edit", inputOptions: { topic: true } },
+                        {name : 'bitrate', method : "edit", inputOptions: { bitrate: true } },
                         {name : 'joinable', method : ""},
-                        {name : 'userLimit', method : "setUserLimit"},
+                        {name : 'user_limit', method : "edit", inputOptions: { user_limit: true } },
                         {name : 'full', method : ""},
                         {name : 'createdAt', method : ""},
-                        {name : 'nsfw', method : "setNSFW"},
-                        {name : 'rateLimitPerUser', method : "setRateLimitPerUser"},
+                        {name : 'nsfw', method : "edit", inputOptions: { nsfw: true } },
+                        {name : 'rate_limit_per_user', method : "edit", inputOptions: { rate_limit_per_user: true } },
                         {name : 'position', method : ""},
                         {name : 'calculatedPosition', method : ""},
                         {name : 'typing', method : ""},
@@ -609,157 +583,171 @@ function selectChannel(e){
     ];
 
     whitelist.has = function(string){
-        // for(data of this){
         for(var i = 0 ; i < this.length; i++){
-            // console.log(data);
             if(this[i].name === string){
-                // console.log(data.name, '=', string);
                 return true;
-            } 
+            }
         }
         return false;
     };
 
-    while(channelId.parentNode){
-        if( channelId.classList.contains('voiceUser') ){
-            selectVoiceMember(channelId.id.substring(1));
+    while(channelIdElement.parentNode){
+        if( channelIdElement.classList.contains('voiceUser') ){
+            selectVoiceMember(channelIdElement.id.substring(1));
             return;
         }
-        if( channelId.classList.contains('sidebarChannelNameOption') || channelId.classList.contains('sidebarChannelContainer') || channelId.classList.contains('sidebarCategoryContainer') )
+        if( channelIdElement.classList.contains('sidebarChannelNameOption') || channelIdElement.classList.contains('sidebarChannelContainer') || channelIdElement.classList.contains('sidebarCategoryContainer') )
             break;
-        channelId = channelId.parentNode;
+        channelIdElement = channelIdElement.parentNode;
     }
-    if(channelId)
-        channelId = channelId.id;
-    // console.log(channelId);
+    if(channelIdElement)
+        channelIdElement = channelIdElement.id;
 
-    if(channelId[2] === 'c')
+    if(channelIdElement[2] === 'c')
         return;
 
-    let channel = client.channels.get(channelId.substring(3));
-    // let guildCh = client.channels.get(channelId.substring(3)).guild.channels.get(channelId.substring(3));
+    const channel = client.getChannel(channelIdElement.substring(3));
+    if (!channel) return;
 
-    // console.log(channel);
     clearChat();
     document.getElementsByClassName('chatTitleName')[0].innerText = channel.name;
 
-    function saveOption(e){
+    async function saveOption(e){
         if(e.target.innerText !== 'Save')
             return;
         let target = e.target,
             parent = target.parentNode,
             chId = parent.getAttribute('channel'),
             method = parent.getAttribute('method'),
+            optionName = parent.getAttribute('optionName'),
             value = parent.children[1].value,
             originalValue = parent.getAttribute('originalValue');
-        
+
         parent.children[1].classList.remove('error');
         clearTaskBar();
-
-        // console.log(chId, method, value);
 
         if(value == originalValue)
             return;
 
-        client.channels.get(chId)[method](value).catch(function(e){
+        const channelToEdit = client.getChannel(chId);
+        if (!channelToEdit || !channelToEdit[method]) return;
+
+        const payload = {};
+        payload[optionName] = value;
+
+        channelToEdit[method](payload).catch(function(err){
             parent.children[1].classList.add('error');
-            error(e.message.replace(/\n/g, ", "));
-            console.error(e.message);
+            error(err.message.replace(/\n/g, ", "));
+            console.error(err);
         }).then(function(e){
             log(`Set ${parent.children[0].innerText} of ${chId} from ${originalValue} to ${value}`);
-            document.getElementById(`gd/${client.channels.get(chId).guild.id}`).click();
-            document.getElementById(`ch/${chId}`).click();
+            const guildId = client.getChannel(chId)?.guildID;
+            if (guildId) {
+                document.getElementById(`gd/${guildId}`).click();
+                document.getElementById(`ch/${chId}`).click();
+            }
         });
     }
 
-    let options = [];
+    let options =;
 
-    // options.push({type: 'separator'});
-    // addChatOpDeprecated({'__SEPARATOR': '__SEPARATOR'}, '__SEPARATOR');
-
-    for(data of whitelist){
-        // console.log(data);
+    for(let data of whitelist){
         if(typeof(channel[data.name]) == 'undefined')
             continue;
-            let opt = { type: 'input', channel: channel, data: data.name, method: data.method };
+            let opt = { type: 'input', channel: channel, data: data.name, method: data.method, inputOptions: data.inputOptions };
             if(data.method !== '') opt.callback = saveOption;
             options.push(opt);
-            // addChatOpDeprecated(channel, data.name, data.method);
     }
 
     options.push({type: 'separator'});
-    // addChatOpDeprecated({'__SEPARATOR': '__SEPARATOR'}, '__SEPARATOR');
 
-    for(data in channel){
+    for(let data in channel){
         if( types.includes( typeof(channel[data]) ) ){
             if(!whitelist.has(data))
                 options.push({ type: 'input', channel: channel, data: data, method: '' });
-            // addChatOpDeprecated(channel, data);
         }
     }
 
     addChatOp(options);
 
-    // let buttons = document.getElementsByClassName('channelOptionButton');
-
-    // for(var i=0; i < buttons.length; i++){
-    //     buttons[i].addEventListener('click', saveOption);
-    // }
-
-    // for(data in channel){
-    //     // if( types.includes( typeof(channel[data]) )){
-    //         console.log(data, '(', typeof(channel[data]) , ')', ': ',  channel[data]);
-    //         // addChatOp(channel, data);
-    //     // }
-    // }
-
     loadMembers(channel.guild, channel);
-    
-    store.set('lastChannel', channelId);
+
+    store.set('lastChannel', channelIdElement);
 }
 
 function selectVoiceMember(id){
     document.getElementById(id).click();
 }
 
-client.on('voiceStateUpdate', (oldM, newM) => {
-    // debugger;
-    // console.log(oldM, newM);
-    if(newM.voiceChannelID == null){
-        delVoiceUser(newM);
-    }else{
-        addVoiceUser(newM.voiceChannel, newM);
+client.on('voiceChannelJoin', (member, newChannel) => {
+    if(newChannel){
+        addVoiceUser(newChannel, member);
     }
-
-    
-    if(newM.selfMute || newM.serverMute)
-        setMute(newM, true);
-    if(newM.guild.afkChannelID === newM.voiceChannelID)
-        setMute(newM, true);
-    if(newM.selfDeaf || newM.serverDeaf)
-        setDeaf(newM, true);
-    if(newM.selfStream)
-        setGoLive(newM, true);
-
 });
 
-function selectMember(e){
-    // console.log(e.target);
+client.on('voiceChannelLeave', (member, oldChannel) => {
+    if(oldChannel){
+        delVoiceUser(member);
+    }
+});
+
+client.on('voiceChannelSwitch', (member, newChannel, oldChannel) => {
+    if(oldChannel){
+        delVoiceUser(member);
+    }
+    if(newChannel){
+        addVoiceUser(newChannel, member);
+    }
+});
+
+client.on('voiceStateUpdate', (member, oldState, newState) => {
+    if (newState.channelID === null) {
+        delVoiceUser(member);
+    } else {
+        const channel = client.getChannel(newState.channelID);
+        if (channel) {
+            addVoiceUser(channel, member);
+        }
+    }
+
+    if(newState.mute || newState.selfMute)
+        setMute(member, true);
+    else if (oldState.mute || oldState.selfMute)
+        setMute(member, false);
+
+    const guild = member.guild;
+    if (guild && guild.afk_channel_id === newState.channelID)
+        setMute(member, true);
+    else if (guild && guild.afk_channel_id === oldState.channelID)
+        setMute(member, false);
+
+    if(newState.deaf || newState.selfDeaf)
+        setDeaf(member, true);
+    else if (oldState.deaf || oldState.selfDeaf)
+        setDeaf(member, false);
+
+    if(newState.selfStream)
+        setGoLive(member, true);
+    else if (oldState.selfStream)
+        setGoLive(member, false);
+});
+
+async function selectMember(e){
     let memberDiv = e.target;
     let types = [   'string',
                     'number',
                     'boolean',
-                    'bigint',
+                    // 'bigint',
                     // 'undefined',
                     'object',
     ];
     let whitelist = [   {name : 'guild', method : ""},
-                        {name : 'nickname', method : "setNickname"},
+                        {name : 'nick', method : "edit", inputOptions: { nick: true } },
                         {name : 'displayName', method : ""},
                         {name : 'id', method : ""},
-                        {name : 'serverDeaf', method : "setDeaf"},
-                        {name : 'serverMute', method : "setMute"},
-                        {name : 'voiceChannelID', method : "setVoiceChannel"},
+                        {name : 'deaf', method : "edit", inputOptions: { deaf: true } },
+                        {name : 'mute', method : "edit", inputOptions: { mute: true } },
+                        {name : 'voiceState', method : "edit", inputOptions: { channelID: true } },
                         {name : 'joinedAt', method : ""},
     ];
 
@@ -767,7 +755,7 @@ function selectMember(e){
         for(var i = 0 ; i < this.length; i++){
             if(this[i].name === string){
                 return true;
-            } 
+            }
         }
         return false;
     };
@@ -776,15 +764,17 @@ function selectMember(e){
         if( memberDiv.classList.contains('member') ) break;
         memberDiv = memberDiv.parentNode;
     }
-    // if(memberDiv) memberDiv = memberDiv.id;
-    let member = client.guilds.get(memberDiv.getAttribute('guild')).members.get(memberDiv.id.substring(3));
-    
-    // console.log(member);
+    const guildId = memberDiv.getAttribute('guild');
+    const memberId = memberDiv.id.substring(3);
+    const guild = client.guilds[guildId];
+    const member = guild ? guild.members[memberId] : null;
+
+    if (!member) return;
 
     clearChat();
-    document.getElementsByClassName('chatTitleName')[0].innerText = member.nickname != null ? member.nickname : member.user.username;
+    document.getElementsByClassName('chatTitleName')[0].innerText = member.nick != null ? member.nick : member.user.username;
 
-    function saveOption(e){
+    async function saveOption(e){
         if(e.target.innerText === 'Copy')
             return;
         let target = e.target,
@@ -793,9 +783,10 @@ function selectMember(e){
             gdId = parent.getAttribute('guild'),
             mbId = parent.getAttribute('channel'),
             method = parent.getAttribute('method'),
+            optionName = parent.getAttribute('optionName'),
             value = opBtn ? parent.getAttribute('originalValue') : parent.children[1].value,
             originalValue = parent.getAttribute('originalValue');
-            
+
         if(opBtn){
             value = (value == 'true');
             value = !value;
@@ -803,15 +794,22 @@ function selectMember(e){
         if(!opBtn) parent.children[1].classList.remove('error');
         clearTaskBar();
 
-        // console.log(target, opBtn, parent, gdId, mbId, method, value, originalValue);
-            
-        if(value == originalValue)
-            return;
+        const guildToEdit = client.guilds[gdId];
+        const memberToEdit = guildToEdit ? guildToEdit.members[mbId] : null;
 
-        client.guilds.get(gdId).members.get(mbId)[method](value).catch(function(e){
+        if (!memberToEdit || !memberToEdit[method]) return;
+
+        const payload = {};
+        if (optionName === 'channelID') {
+            payload.channelID = value === 'null' ? null : value;
+        } else {
+            payload[optionName] = value;
+        }
+
+        memberToEdit[method](payload).catch(function(err){
             if(!opBtn) parent.children[1].classList.add('error');
-            error(e.message.replace(/\n/g, ", "));
-            console.error(e.message);
+            error(err.message.replace(/\n/g, ", "));
+            console.error(err);
         }).then(function(e){
             if(opBtn){
                 log(`${parent.innerText}${parent.innerText=='Mute'||parent.innerText=='Unute'?'d':''}${parent.innerText=='Deaf'||parent.innerText=='Undeaf'?'ened':''}${parent.innerText=='Disconnect'?'ed':''} ${mbId}`);
@@ -819,34 +817,36 @@ function selectMember(e){
                 log(`Set ${parent.children[0].innerText} of ${mbId} from ${originalValue} to ${value}`);
                 document.getElementById(`gd/${gdId}`).click();
                 document.getElementById(`mb/${mbId}`).click();
-                // setTimeout(()=>{
-                //     document.getElementById(`gd/${gdId}`).click();
-                //     document.getElementById(`mb/${mbId}`).click();
-                // }, 100);
         });
     }
 
-    function sendToVoid(e){
+    async function sendToVoid(e){
         let target = e.target,
             gdId = target.getAttribute('guild'),
             mbId = target.getAttribute('channel');
 
-        client.guilds.get(gdId).members.get(mbId).setVoiceChannel(target.innerText==='Disconnect'?null:client.guilds.get(gdId).afkChannelID);
+        const guildToSend = client.guilds[gdId];
+        const memberToSend = guildToSend ? guildToSend.members[mbId] : null;
+        const afkChannelId = guildToSend ? guildToSend.afk_channel_id : null;
+
+        if (memberToSend) {
+            memberToSend.edit({ channelID: target.innerText === 'Disconnect' ? null : afkChannelId }).catch(console.error);
+        }
     }
 
-    let options = [];
+    let options =;
 
-    if(member.voiceChannelID){
-        let afkString = `Send to ${member.guild.afkChannel ? member.guild.afkChannel.name : 'afk'} channel`;
-        if(member.guild.afkChannel)
-            afkString = `Send to ${member.guild.afkChannel.name} channel`;
+    if(member.voiceState && member.voiceState.channelID){
+        let afkString = `Send to ${guild.afkChannel ? guild.afkChannel.name : 'afk'} channel`;
+        if(guild.afkChannel)
+            afkString = `Send to ${guild.afkChannel.name} channel`;
         else
             afkString = `There is no afk channel ¯\\_(ツ)_/¯`;
 
         let opt = { type: 'btngroup', member: member,
-                    btns:[  { type: 'toggle', name: 'Mute', method:'setMute', state: member.serverMute, callback: saveOption },
-                            { type: 'toggle', name: 'Deaf', method:'setDeaf', state: member.serverDeaf, callback: saveOption },
-                            { type: 'btn', name: afkString, method:'', disabled: (!member.guild.afkChannel ? true : undefined), callback: sendToVoid }, 
+                    btns:[  { type: 'toggle', name: 'Mute', method:'edit', optionName: 'mute', state: member.mute, callback: saveOption },
+                            { type: 'toggle', name: 'Deaf', method:'edit', optionName: 'deaf', state: member.deaf, callback: saveOption },
+                            { type: 'btn', name: afkString, method:'', disabled: (!guild.afkChannel ? true : undefined), callback: sendToVoid },
                             { type: 'btn', name: `Disconnect`, method:'', callback: sendToVoid }]};
 
         options.push(opt);
@@ -854,37 +854,27 @@ function selectMember(e){
         options.push({type: 'separator'});
     }
 
-    for(data of whitelist){
-        // console.log(data);
+    for(let data of whitelist){
         if(typeof(member[data.name]) == 'undefined')
             continue;
-            let opt = { type: 'input', channel: member, data: data.name, method: data.method };
+            let opt = { type: 'input', channel: member, data: data.name, method: data.method, optionName: Object.keys(data.inputOptions)[0] };
             if(data.method !== '') opt.callback = saveOption;
             options.push(opt);
-            // addChatOpDeprecated(member, data.name, data.method);
     }
 
     options.push({type: 'separator'});
-    // addChatOpDeprecated({'__SEPARATOR': '__SEPARATOR'}, '__SEPARATOR');
 
-    for(data in member){
+    for(let data in member){
         if( types.includes( typeof(member[data]) ) ){
             if(!whitelist.has(data))
                 options.push({ type: 'input', channel: member, data: data });
-            // addChatOpDeprecated(member, data);
         }
     }
 
 
     addChatOp(options);
 
-    // let buttons = document.getElementsByClassName('channelOptionButton');
-
-    // for(var i=0; i < buttons.length; i++){
-    //     buttons[i].addEventListener('click', function(e){
-            
-    //     });
-    // }
-
     store.set('lastChannel', memberDiv.id);
 }
+
+client.connect();
